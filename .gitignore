@@ -1,0 +1,18 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment & credentials
+.env
+.env.local
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# OS / Editor temporary files
+.DS_Store
+Thumbs.db
+*.log

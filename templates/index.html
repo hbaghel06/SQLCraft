@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SQLCraft — Production Grade Local SQL Studio</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    body {
+      background-color: #0b1120;
+      color: #e2e8f0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    }
+    .navbar {
+      background-color: #111827;
+      border-bottom: 1px solid #1f2937;
+    }
+    .card {
+      background-color: #111827;
+      border: 1px solid #1f2937;
+      border-radius: 12px;
+    }
+    .form-control, .form-select {
+      background-color: #030712;
+      border: 1px solid #1f2937;
+      color: #f9fafb;
+    }
+    .form-control:focus, .form-select:focus {
+      background-color: #030712;
+      border-color: #0ea5e9;
+      box-shadow: 0 0 0 0.25rem rgba(14, 165, 233, 0.2);
+      color: #f9fafb;
+    }
+    pre {
+      background-color: #030712;
+      border: 1px solid #1f2937;
+      border-radius: 8px;
+      padding: 1.1rem;
+      color: #38bdf8;
+      font-size: 0.95rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      white-space: pre-wrap;
+      word-break: break-all;
+      margin-bottom: 0;
+    }
+    .badge-dialect {
+      background-color: #1e293b;
+      color: #38bdf8;
+      border: 1px solid #334155;
+    }
+    .badge-source {
+      background-color: #064e3b;
+      color: #34d399;
+      border: 1px solid #059669;
+    }
+    .step-item {
+      padding: 0.65rem 0.9rem;
+      margin-bottom: 0.5rem;
+      background: #030712;
+      border-left: 3px solid #0ea5e9;
+      border-radius: 4px;
+      font-size: 0.9rem;
+    }
+    .btn-primary {
+      background-color: #0284c7;
+      border-color: #0284c7;
+    }
+    .btn-primary:hover {
+      background-color: #0369a1;
+      border-color: #0369a1;
+    }
+    .table-dark {
+      background-color: #030712;
+      border-color: #1f2937;
+    }
+    .nav-tabs .nav-link {
+      color: #94a3b8;
+      border: none;
+      border-bottom: 2px solid transparent;
+    }
+    .nav-tabs .nav-link.active {
+      color: #38bdf8;
+      background: transparent;
+      border-bottom: 2px solid #38bdf8;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Navigation -->
+  <nav class="navbar navbar-expand-lg px-4 py-2">
+    <div class="container-fluid">
+      <a class="navbar-brand fw-bold d-flex align-items-center gap-2" href="#">
+        <i class="bi bi-database-fill-gear text-info fs-4"></i>
+        <span>SQLCraft Studio</span>
+        <span class="badge bg-primary-subtle text-primary border border-primary-subtle fs-7 fw-medium ms-1">Local Ready</span>
+      </a>
+      <div class="d-flex align-items-center gap-2">
+        <span id="engineBadge" class="badge badge-source px-2 py-1 small">
+          <i class="bi bi-check-circle me-1"></i>Engine Active
+        </span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Container -->
+  <div class="container-fluid px-4 py-4">
+    <div class="row g-4">
+      
+      <!-- Left Panel: Input & Schemas -->
+      <div class="col-lg-5">
+        <div class="card p-4 shadow-sm h-100">
+          
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="fw-bold mb-0 text-white text-uppercase tracking-wider">
+              <i class="bi bi-table text-info me-2"></i>1. Relational Schema
+            </h6>
+            <div class="dropdown">
+              <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                Presets
+              </button>
+              <ul class="dropdown-menu dropdown-menu-dark">
+                <li><a class="dropdown-item" href="#" onclick="loadPreset('college')">College / University (Recommended)</a></li>
+                <li><a class="dropdown-item" href="#" onclick="loadPreset('ecommerce')">E-Commerce &amp; Orders</a></li>
+                <li><a class="dropdown-item" href="#" onclick="loadPreset('hospital')">Hospital Patient Records</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item text-danger" href="#" onclick="loadPreset('clear')">Clear Schema</a></li>
+              </ul>
+            </div>
+          </div>
+
+          <textarea id="schemaText" class="form-control mb-3 font-monospace small" rows="8" placeholder="Paste DDL statements or table schemas here..."></textarea>
+
+          <div class="row g-3 mb-3">
+            <div class="col-sm-6">
+              <label class="form-label small text-secondary fw-semibold">SQL Dialect</label>
+              <select id="dialectSelect" class="form-select form-select-sm">
+                <option value="mysql" selected>MySQL</option>
+                <option value="postgresql">PostgreSQL</option>
+                <option value="sqlite">SQLite (Live Execution)</option>
+              </select>
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label small text-secondary fw-semibold">Quick Prompts</label>
+              <select id="samplePromptSelect" class="form-select form-select-sm" onchange="applySamplePrompt(this.value)">
+                <option value="" selected>-- Select sample --</option>
+                <option value="Find top 3 students by average score across all subjects.">Top 3 students by avg score</option>
+                <option value="Count how many students are enrolled in each department.">Student count per department</option>
+                <option value="List students who have not enrolled in any course yet.">Unenrolled students</option>
+              </select>
+            </div>
+          </div>
+
+          <h6 class="fw-bold mb-2 text-white text-uppercase tracking-wider">
+            <i class="bi bi-chat-left-dots text-info me-2"></i>2. Natural Language Request
+          </h6>
+          <textarea id="queryText" class="form-control mb-3 small" rows="3" placeholder="e.g. 'Show me average scores per student where average is above 75, ordered descending'"></textarea>
+
+          <button id="generateBtn" class="btn btn-primary w-100 py-2 fw-semibold shadow-sm" onclick="handleGenerate()">
+            <span id="btnText"><i class="bi bi-play-circle-fill me-2"></i>Synthesize SQL &amp; Test Locally</span>
+            <span id="btnSpinner" class="spinner-border spinner-border-sm ms-2 d-none" role="status"></span>
+          </button>
+
+          <div id="alertBox" class="alert alert-danger mt-3 d-none small py-2" role="alert"></div>
+
+          <!-- Query History -->
+          <div class="mt-4 pt-3 border-top border-secondary-subtle">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <span class="small text-secondary fw-bold text-uppercase">Recent Queries</span>
+              <button class="btn btn-link btn-sm text-secondary p-0 text-decoration-none" onclick="clearHistory()">Clear</button>
+            </div>
+            <div id="historyList" class="d-flex flex-column gap-1 overflow-auto" style="max-height: 120px;">
+              <span class="text-secondary small fst-italic">No queries saved yet.</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Right Panel: Output & Live Execution -->
+      <div class="col-lg-7">
+        <div class="card p-4 shadow-sm h-100 d-flex flex-column">
+          
+          <!-- Top Bar with Tabs and Actions -->
+          <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <ul class="nav nav-tabs" id="outputTabs" role="tablist">
+              <li class="nav-item" role="presentation">
+                <button class="nav-link active fw-semibold" id="sql-tab" data-bs-toggle="tab" data-bs-target="#sql-tab-pane" type="button" role="tab">
+                  <i class="bi bi-code-slash me-1"></i>Generated SQL
+                </button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link fw-semibold" id="table-tab" data-bs-toggle="tab" data-bs-target="#table-tab-pane" type="button" role="tab">
+                  <i class="bi bi-table me-1"></i>Live Sandbox Output <span id="tableCountBadge" class="badge bg-secondary ms-1">0</span>
+                </button>
+              </li>
+            </ul>
+
+            <div class="d-flex gap-2 align-items-center">
+              <span id="outputDialectBadge" class="badge badge-dialect px-2 py-1">MYSQL</span>
+              <button id="copyBtn" class="btn btn-sm btn-outline-info" onclick="copySql()" disabled>
+                <i class="bi bi-clipboard me-1"></i>Copy
+              </button>
+              <button id="downloadSqlBtn" class="btn btn-sm btn-outline-secondary" onclick="downloadSqlFile()" disabled title="Download .sql file">
+                <i class="bi bi-download me-1"></i>.SQL
+              </button>
+              <button id="exportJsonBtn" class="btn btn-sm btn-outline-secondary" onclick="exportResponseJson()" disabled title="Export complete response JSON">
+                <i class="bi bi-file-earmark-code me-1"></i>JSON
+              </button>
+            </div>
+          </div>
+
+          <!-- Tab Content -->
+          <div class="tab-content flex-grow-1 d-flex flex-column" id="outputTabContent">
+            
+            <!-- Tab 1: SQL Code & Explanations -->
+            <div class="tab-pane fade show active flex-grow-1 d-flex flex-column" id="sql-tab-pane" role="tabpanel">
+              <div class="position-relative mb-2">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <span class="small text-secondary"><i class="bi bi-pencil-square me-1"></i>Interactive SQL Editor (Editable)</span>
+                  <button id="reRunBtn" class="btn btn-sm btn-outline-success py-0 px-2 small" onclick="executeCurrentSql()" disabled title="Re-run this SQL against the in-memory SQLite sandbox">
+                    <i class="bi bi-play-fill me-1"></i>Re-Run In Sandbox
+                  </button>
+                </div>
+                <pre id="sqlOutput" contenteditable="true" spellcheck="false" title="Click to edit query directly">-- Generated SQL will appear here after clicking 'Synthesize SQL'...</pre>
+              </div>
+
+              <h6 class="fw-bold text-white mb-2 d-flex align-items-center gap-2">
+                <i class="bi bi-lightbulb-fill text-warning"></i>
+                <span>Execution Logic Breakdown</span>
+              </h6>
+              
+              <div id="explanationContainer" class="flex-grow-1 overflow-auto" style="max-height: 250px;">
+                <p class="text-secondary small fst-italic">Relational logic explaining joins, groupings, and constraints will be structured here.</p>
+              </div>
+            </div>
+
+            <!-- Tab 2: Live In-Memory Sandbox Table Output -->
+            <div class="tab-pane fade flex-grow-1 overflow-auto" id="table-tab-pane" role="tabpanel" style="max-height: 520px;">
+              <div id="tableNotice" class="alert alert-info py-2 small mb-3">
+                <i class="bi bi-info-circle me-1"></i>
+                <span id="tableNoticeText">Click 'Synthesize SQL' to execute against local in-memory SQLite tables.</span>
+              </div>
+              <div class="table-responsive">
+                <table class="table table-dark table-hover table-bordered small align-middle" id="resultsTable">
+                  <thead id="tableHead">
+                    <tr><th class="text-secondary">Columns</th></tr>
+                  </thead>
+                  <tbody id="tableBody">
+                    <tr><td class="text-secondary fst-italic">No active query execution rows.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Footer -->
+    <div class="text-center text-secondary small mt-4 pt-3 border-top border-secondary-subtle">
+      <span>SQLCraft &bull; B.Tech CSE Mini Project &bull; Pranveer Singh Institute of Technology (PSIT), Kanpur</span>
+    </div>
+  </div>
+
+  <!-- Bootstrap 5 JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- Application Script -->
+  <script>
+    // Automatically route to port 5000 if opened via VS Code Live Server (port 5500) or file://
+    const API_BASE = (window.location.port === "5000") ? "" : "http://127.0.0.1:5000";
+    let lastGeneratedData = null;
+
+    const presets = {
+      college: `-- College / University Database Schema
+CREATE TABLE departments (
+    dept_id INT PRIMARY KEY,
+    dept_name VARCHAR(100) NOT NULL
+);
+
+CREATE TABLE students (
+    student_id INT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    dept_id INT,
+    enrollment_year INT,
+    FOREIGN KEY (dept_id) REFERENCES departments(dept_id)
+);
+
+CREATE TABLE courses (
+    course_id INT PRIMARY KEY,
+    course_name VARCHAR(100),
+    credits INT
+);
+
+CREATE TABLE marks (
+    mark_id INT PRIMARY KEY,
+    student_id INT,
+    course_id INT,
+    score DECIMAL(5,2),
+    FOREIGN KEY (student_id) REFERENCES students(student_id),
+    FOREIGN KEY (course_id) REFERENCES courses(course_id)
+);`,
+
+      ecommerce: `-- E-Commerce Store Schema
+CREATE TABLE customers (
+    customer_id INT PRIMARY KEY,
+    name VARCHAR(100),
+    email VARCHAR(100),
+    city VARCHAR(50)
+);
+
+CREATE TABLE orders (
+    order_id INT PRIMARY KEY,
+    customer_id INT,
+    order_date DATE,
+    total_amount DECIMAL(10,2),
+    status VARCHAR(20),
+    FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
+);`,
+
+      hospital: `-- Hospital Patient Management Schema
+CREATE TABLE doctors (
+    doctor_id INT PRIMARY KEY,
+    name VARCHAR(100),
+    specialization VARCHAR(100)
+);
+
+CREATE TABLE patients (
+    patient_id INT PRIMARY KEY,
+    name VARCHAR(100),
+    age INT,
+    gender VARCHAR(10)
+);`
+    };
+
+    function loadPreset(type) {
+      const textarea = document.getElementById('schemaText');
+      if (type === 'clear') {
+        textarea.value = '';
+      } else if (presets[type]) {
+        textarea.value = presets[type];
+      }
+    }
+
+    function applySamplePrompt(val) {
+      if (val) {
+        document.getElementById('queryText').value = val;
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      loadPreset('college');
+      document.getElementById('queryText').value = "Find top 3 students by average score across all subjects.";
+      renderHistory();
+    });
+
+    async function handleGenerate() {
+      const schema = document.getElementById('schemaText').value.trim();
+      const query = document.getElementById('queryText').value.trim();
+      const dialect = document.getElementById('dialectSelect').value;
+      
+      const alertBox = document.getElementById('alertBox');
+      const btnText = document.getElementById('btnText');
+      const btnSpinner = document.getElementById('btnSpinner');
+      const generateBtn = document.getElementById('generateBtn');
+
+      alertBox.classList.add('d-none');
+
+      if (!schema || !query) {
+        alertBox.textContent = "Please provide both the schema definitions and natural language query.";
+        alertBox.classList.remove('d-none');
+        return;
+      }
+
+      generateBtn.disabled = true;
+      btnSpinner.classList.remove('d-none');
+      btnText.textContent = "Executing Synthesis...";
+
+      try {
+        const response = await fetch(API_BASE + '/api/generate-sql', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ schema, query, dialect })
+        });
+
+        const rawText = await response.text();
+        if (!rawText || !rawText.trim()) {
+          throw new Error("Received an empty response from server. Please verify that 'python app.py' is running in your terminal.");
+        }
+
+        let data;
+        try {
+          data = JSON.parse(rawText);
+        } catch (jsonErr) {
+          throw new Error("Invalid response format received from server: " + rawText.substring(0, 120));
+        }
+
+        if (!response.ok) {
+          throw new Error(data.error || "Failed to synthesize query.");
+        }
+
+        lastGeneratedData = data;
+
+        // Render SQL and Badges
+        document.getElementById('sqlOutput').textContent = data.sql || "-- No SQL statement produced.";
+        document.getElementById('outputDialectBadge').textContent = dialect.toUpperCase();
+        
+        if (data.source) {
+          document.getElementById('engineBadge').innerHTML = `<i class="bi bi-cpu me-1"></i>${escapeHtml(data.source)}`;
+        }
+
+        document.getElementById('copyBtn').disabled = false;
+        document.getElementById('downloadSqlBtn').disabled = false;
+        document.getElementById('exportJsonBtn').disabled = false;
+        document.getElementById('reRunBtn').disabled = false;
+
+        // Render Explanations
+        const container = document.getElementById('explanationContainer');
+        container.innerHTML = '';
+        if (Array.isArray(data.explanation) && data.explanation.length > 0) {
+          data.explanation.forEach((step, idx) => {
+            const div = document.createElement('div');
+            div.className = 'step-item';
+            div.innerHTML = `<strong>Clause ${idx + 1}:</strong> ${escapeHtml(step)}`;
+            container.appendChild(div);
+          });
+        }
+
+        // Render Live Execution Results Table
+        renderExecutionTable(data.execution);
+
+        // Save to Local History
+        saveToHistory(query, data.sql, dialect);
+
+      } catch (err) {
+        alertBox.textContent = err.message;
+        alertBox.classList.remove('d-none');
+      } finally {
+        generateBtn.disabled = false;
+        btnSpinner.classList.add('d-none');
+        btnText.innerHTML = `<i class="bi bi-play-circle-fill me-2"></i>Synthesize SQL &amp; Test Locally`;
+      }
+    }
+
+    function renderExecutionTable(exec) {
+      const tableHead = document.getElementById('tableHead');
+      const tableBody = document.getElementById('tableBody');
+      const countBadge = document.getElementById('tableCountBadge');
+      const noticeText = document.getElementById('tableNoticeText');
+
+      tableHead.innerHTML = '';
+      tableBody.innerHTML = '';
+
+      if (!exec) {
+        countBadge.textContent = '0';
+        noticeText.textContent = 'No execution data available.';
+        return;
+      }
+
+      countBadge.textContent = exec.row_count || '0';
+      noticeText.textContent = exec.message || '';
+
+      if (exec.success && exec.columns && exec.columns.length > 0) {
+        // Build header
+        const trHead = document.createElement('tr');
+        exec.columns.forEach(col => {
+          const th = document.createElement('th');
+          th.textContent = col;
+          trHead.appendChild(th);
+        });
+        tableHead.appendChild(trHead);
+
+        // Build body
+        if (exec.rows && exec.rows.length > 0) {
+          exec.rows.forEach(row => {
+            const tr = document.createElement('tr');
+            row.forEach(val => {
+              const td = document.createElement('td');
+              td.textContent = (val !== null && val !== undefined) ? val : 'NULL';
+              tr.appendChild(td);
+            });
+            tableBody.appendChild(tr);
+          });
+        } else {
+          tableBody.innerHTML = `<tr><td colspan="${exec.columns.length}" class="text-center text-secondary py-3">Query succeeded but returned 0 rows matching criteria.</td></tr>`;
+        }
+      } else {
+        tableHead.innerHTML = `<tr><th>Status</th></tr>`;
+        tableBody.innerHTML = `<tr><td class="text-warning">${escapeHtml(exec.message || 'Execution failed')}</td></tr>`;
+      }
+    }
+
+    function copySql() {
+      const sql = document.getElementById('sqlOutput').textContent;
+      navigator.clipboard.writeText(sql).then(() => {
+        const copyBtn = document.getElementById('copyBtn');
+        copyBtn.innerHTML = `<i class="bi bi-check2 me-1"></i>Copied!`;
+        copyBtn.classList.add('btn-success');
+        setTimeout(() => {
+          copyBtn.innerHTML = `<i class="bi bi-clipboard me-1"></i>Copy`;
+          copyBtn.classList.remove('btn-success');
+        }, 2000);
+      });
+    }
+
+    async function executeCurrentSql() {
+      const sql = document.getElementById('sqlOutput').innerText.trim();
+      const schema = document.getElementById('schemaText').value.trim();
+      if (!sql || !schema) return;
+
+      const reRunBtn = document.getElementById('reRunBtn');
+      reRunBtn.disabled = true;
+      reRunBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Running...';
+
+      try {
+        const resp = await fetch(API_BASE + '/api/execute-raw', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ schema, sql })
+        });
+        const data = await resp.json();
+        renderExecutionTable(data);
+        
+        // Switch tab to table view to show the result
+        const tabEl = document.getElementById('table-tab');
+        const tabInstance = bootstrap.Tab.getOrCreateInstance(tabEl);
+        tabInstance.show();
+      } catch (err) {
+        alert('Execution notice: ' + err.message);
+      } finally {
+        reRunBtn.disabled = false;
+        reRunBtn.innerHTML = '<i class="bi bi-play-fill me-1"></i>Re-Run In Sandbox';
+      }
+    }
+
+    function downloadSqlFile() {
+      if (!lastGeneratedData || !lastGeneratedData.sql) return;
+      const blob = new Blob([lastGeneratedData.sql], { type: 'text/sql' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `query_${Date.now()}.sql`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function exportResponseJson() {
+      if (!lastGeneratedData) return;
+      const blob = new Blob([JSON.stringify(lastGeneratedData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `sqlcraft_response_${Date.now()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function saveToHistory(prompt, sql, dialect) {
+      try {
+        let history = JSON.parse(localStorage.getItem('sqlcraft_history') || '[]');
+        history.unshift({ prompt, sql, dialect, time: new Date().toLocaleTimeString() });
+        if (history.length > 5) history.pop();
+        localStorage.setItem('sqlcraft_history', JSON.stringify(history));
+        renderHistory();
+      } catch (e) {}
+    }
+
+    function renderHistory() {
+      const list = document.getElementById('historyList');
+      try {
+        const history = JSON.parse(localStorage.getItem('sqlcraft_history') || '[]');
+        if (history.length === 0) {
+          list.innerHTML = `<span class="text-secondary small fst-italic">No queries saved yet.</span>`;
+          return;
+        }
+        list.innerHTML = '';
+        history.forEach(item => {
+          const btn = document.createElement('button');
+          btn.className = 'btn btn-sm btn-outline-dark text-start text-truncate text-secondary py-1 px-2 border-secondary-subtle';
+          btn.innerHTML = `<span class="text-info fw-semibold me-1">${item.dialect.toUpperCase()}</span> ${escapeHtml(item.prompt)}`;
+          btn.onclick = () => {
+            document.getElementById('queryText').value = item.prompt;
+            document.getElementById('dialectSelect').value = item.dialect;
+            document.getElementById('sqlOutput').textContent = item.sql;
+          };
+          list.appendChild(btn);
+        });
+      } catch (e) {}
+    }
+
+    function clearHistory() {
+      localStorage.removeItem('sqlcraft_history');
+      renderHistory();
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.innerText = String(text);
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>
