@@ -33,4 +33,39 @@ assert exec_res["success"] is True
 assert len(exec_res["columns"]) == 2
 assert len(exec_res["rows"]) > 0
 print(f"Test 3: SQLite sandbox passed! Returned {len(exec_res['rows'])} live rows: {exec_res['rows']}")
-print("\nAll Product-Ready Tests Passed Successfully!")
+
+# 4. Test Custom Schema and Custom Insertion
+custom_schema = """
+CREATE TABLE stud (
+    name VARCHAR(20),
+    roll int,
+    dept VARCHAR(10)
+);
+"""
+custom_query = 'show me the prompt for insertion of values ("hb", 23, "cse")'
+custom_fallback = generate_local_intelligent_fallback(custom_schema, custom_query, "mysql")
+print("\nGenerated SQL for Custom Input:")
+print(custom_fallback["sql"])
+assert "INSERT INTO stud" in custom_fallback["sql"]
+assert "'hb'" in custom_fallback["sql"]
+assert "23" in custom_fallback["sql"]
+assert "'cse'" in custom_fallback["sql"]
+print("Test 4a: Custom SQL generation passed!")
+
+custom_exec = execute_sqlite_locally(custom_schema, custom_fallback["sql"])
+assert custom_exec["success"] is True
+assert custom_exec["columns"] == ["name", "roll", "dept"]
+assert len(custom_exec["rows"]) == 1
+assert custom_exec["rows"][0] == ["hb", 23, "cse"]
+print(f"Test 4b: Custom SQLite execution passed! Row: {custom_exec['rows'][0]}")
+
+# 5. Test Custom Schema SELECT on empty table (auto-seeding)
+select_query = "show all students from stud"
+select_fallback = generate_local_intelligent_fallback(custom_schema, select_query, "postgres")
+select_exec = execute_sqlite_locally(custom_schema, select_fallback["sql"])
+assert select_exec["success"] is True
+assert select_exec["columns"] == ["name", "roll", "dept"]
+assert len(select_exec["rows"]) > 0
+print(f"Test 5: Custom SELECT auto-seeding passed! Rows: {select_exec['rows']}")
+
+print("\nAll Product-Ready Tests (Standard + Custom) Passed Successfully!")
