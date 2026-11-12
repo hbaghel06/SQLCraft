@@ -419,21 +419,22 @@ def extract_values_from_prompt(user_query, columns):
     """
     Extracts INSERT values from prompts like:
     - 'insert ("Alice", 25, "HR")'
+    - 'insertion of values --> ("hb", 1), ("db", 5)'
     - 'add a record with name Alice, age 25, dept HR'
     - 'insert name="Alice", age=25'
+    Returns a list of rows: [[val1, val2, ...], ...]
     """
-    # 1. Try parenthesized values: ("hb", 23, "cse") or ('hb', 23, 'cse')
-    paren_match = re.search(r"\(\s*([^()]+)\s*\)", user_query)
-    if paren_match:
-        raw = paren_match.group(1)
-        # Split on comma not inside quotes
-        parts = re.split(r""",\s*(?=(?:[^'"]*['"][^'"]*['"])*[^'"]*$)""", raw)
-        vals = []
-        for p in parts:
-            p = p.strip().strip("'\"")
-            vals.append(p)
-        if vals:
-            return vals
+    # 1. Try parenthesized values: ("hb", 1) or multiple ("hb", 1), ("db", 5)
+    paren_matches = re.findall(r"\(\s*([^()]+)\s*\)", user_query)
+    if paren_matches:
+        all_rows = []
+        for raw in paren_matches:
+            parts = re.split(r""",\s*(?=(?:[^'"]*['"][^'"]*['"])*[^'"]*$)""", raw)
+            row_vals = [p.strip().strip("'\"") for p in parts if p.strip()]
+            if row_vals:
+                all_rows.append(row_vals)
+        if all_rows:
+            return all_rows
 
     # 2. Try "col = val" pairs: name="Alice", age=25
     kv_matches = re.findall(r"(\w+)\s*=\s*['\"]?([\w\s]+?)['\"]?(?:,|$)", user_query, re.IGNORECASE)
@@ -441,7 +442,7 @@ def extract_values_from_prompt(user_query, columns):
         col_val_map = {k.lower(): v.strip() for k, v in kv_matches}
         ordered = [col_val_map.get(c.lower(), None) for c in columns]
         if any(v is not None for v in ordered):
-            return [v if v is not None else "NULL" for v in ordered]
+            return [[v if v is not None else "NULL" for v in ordered]]
 
     # 3. Try "with col val" pattern: "with name Alice age 25 dept HR"
     vals = []
@@ -454,7 +455,7 @@ def extract_values_from_prompt(user_query, columns):
             vals.append(m.group(1).strip())
 
     if len(vals) == len(columns):
-        return vals
+        return [vals]
 
     # 4. Try quoted strings + standalone numbers in order
     tokens = re.findall(r"""['\"]([^'"]+)['\"]|(-?\d+\.?\d*)""", user_query)
@@ -463,7 +464,7 @@ def extract_values_from_prompt(user_query, columns):
         ordered_vals.append(t[0] if t[0] else t[1])
 
     if ordered_vals:
-        return ordered_vals
+        return [ordered_vals]
 
     return []
 
@@ -518,46 +519,59 @@ def generate_local_intelligent_fallback(schema_text, user_query, dialect):
     # --- Step 3: Generate SQL based on intent ---
 
     if intent == "insert":
-        raw_vals = extract_values_from_prompt(user_query, columns)
-        formatted_vals = []
-        for v in raw_vals:
-            v_clean = str(v).strip().strip("'\"")
-            if re.match(r"^-?\d+(\.\d+)?$", v_clean):
-                formatted_vals.append(v_clean)
-            else:
-                formatted_vals.append(f"'{v_clean}'")
+        raw_rows = extract_values_from_prompt(user_query, columns)
+        formatted_rows = []
+        for row in raw_rows:
+            formatted_vals = []
+            for v in row:
+                v_clean = str(v).strip().strip("'\"")
+                if re.match(r"^-?\d+(\.\d+)?$", v_clean):
+                    formatted_vals.append(v_clean)
+                else:
+                    formatted_vals.append(f"'{v_clean}'")
+            if formatted_vals:
+                formatted_rows.append(formatted_vals)
 
-        if not formatted_vals:
+        if not formatted_rows:
             # Generate placeholder values based on column types from schema
+            placeholder = []
             for c in columns:
                 cl = c.lower()
                 if any(k in cl for k in ["id", "roll", "num", "year", "age", "code", "pin"]):
-                    formatted_vals.append("1")
+                    placeholder.append("1")
                 elif any(k in cl for k in ["price", "salary", "amount", "score", "marks", "cgpa", "gpa"]):
-                    formatted_vals.append("0.00")
+                    placeholder.append("0.00")
                 elif any(k in cl for k in ["date", "dob", "joined"]):
-                    formatted_vals.append("'2024-01-01'")
+                    placeholder.append("'2024-01-01'")
                 elif any(k in cl for k in ["email"]):
-                    formatted_vals.append(f"'user@example.com'")
+                    placeholder.append(f"'user@example.com'")
                 elif any(k in cl for k in ["phone", "mobile", "contact"]):
-                    formatted_vals.append("'9999999999'")
+                    placeholder.append("'9999999999'")
                 else:
-                    formatted_vals.append(f"'Sample_{c}'")
+                    placeholder.append(f"'Sample_{c}'")
+            formatted_rows.append(placeholder)
 
-        target_cols = columns[:len(formatted_vals)] if 0 < len(formatted_vals) <= len(columns) else columns
-        if len(formatted_vals) > len(columns):
-            formatted_vals = formatted_vals[:len(columns)]
-            target_cols = columns
-
+        first_row_len = len(formatted_rows[0])
+        target_cols = columns[:first_row_len] if 0 < first_row_len <= len(columns) else columns
         col_clause = f" ({', '.join(target_cols)})"
-        val_clause = f"({', '.join(formatted_vals)})"
 
-        sql = f"INSERT INTO {target_table}{col_clause}\nVALUES {val_clause};"
+        val_rows_strs = []
+        for r in formatted_rows:
+            r_slice = r[:len(target_cols)]
+            val_rows_strs.append(f"({', '.join(r_slice)})")
+
+        if len(val_rows_strs) == 1:
+            val_clause = val_rows_strs[0]
+            sql = f"INSERT INTO {target_table}{col_clause}\nVALUES {val_clause};"
+        else:
+            val_clause = ",\n  ".join(val_rows_strs)
+            sql = f"INSERT INTO {target_table}{col_clause}\nVALUES\n  {val_clause};"
+
         explanation = [
             f"Target dialect: {dialect_upper}.",
-            f"Detected intent: INSERT — adding a new record into '{target_table}'.",
+            f"Detected intent: INSERT — inserting {len(val_rows_strs)} record(s) into '{target_table}'.",
             f"Columns targeted: {', '.join(target_cols)}.",
-            f"Values mapped: {val_clause} (strings quoted, numbers unquoted)."
+            "Formatted data values matching SQL literal quoting specifications."
         ]
 
     elif intent == "update":

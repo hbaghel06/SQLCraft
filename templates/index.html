@@ -276,8 +276,8 @@
 
   <!-- Application Script -->
   <script>
-    // Automatically route to port 5000 if opened via VS Code Live Server (port 5500) or file://
-    const API_BASE = (window.location.port === "5000") ? "" : "http://127.0.0.1:5000";
+    // Automatically route to port 5000 only if opened via local file:// or VS Code Live Server (port 5500)
+    const API_BASE = (window.location.protocol === "file:" || window.location.port === "5500") ? "http://127.0.0.1:5000" : "";
     let lastGeneratedData = null;
 
     const presets = {
