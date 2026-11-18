@@ -178,10 +178,16 @@ def detect_intent(query_lower):
         r"\bwrite\s+(a\s+)?query\s+(to\s+)?(insert|add)\b",
         r"\bquery\s+(to\s+|for\s+)(insert|add|store|save)\b",
         r"\bstatement\s+(to\s+|for\s+)(insert|add)\b",
-        r"values\s*\(", r"\binto\s+\w+\s*\(",
+        r"values\s*[\(\{\[]", r"\binto\s+\w+\s*[\(\{\[]",
+        r"insertion\s*->", r"\bvalues\b",
     ]
     for pat in insert_patterns:
         if re.search(pat, q):
+            return "insert"
+
+    # Also detect raw bracketed data records like {"hb", 54} or ("hb", 54) or ["hb", 54]
+    if re.search(r"[\(\{\[].*?,.*?[\)\}\]]", q):
+        if not any(k in q for k in ["select", "find", "show", "get", "display", "list", "view", "count", "how many", "delete", "update"]):
             return "insert"
 
     # --- DELETE patterns ---
