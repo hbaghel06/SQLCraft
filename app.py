@@ -104,12 +104,19 @@ def parse_tables_and_columns(schema_text):
     """
     Extracts all table names and their column names from any DDL text.
     Handles custom schemas with parenthesized types (e.g. VARCHAR(20), DECIMAL(10,2)).
+    Resilient to common typos like CRREATE, TABEL, and Oracle types like VARCHAR2.
     """
     tables = {}
     if not schema_text:
         return tables
 
-    chunks = re.split(r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?", schema_text, flags=re.IGNORECASE)
+    # Normalize common DDL typos & dialect quirks (e.g. CRREATE -> CREATE, TABEL -> TABLE, VARCHAR2 -> VARCHAR)
+    normalized = re.sub(r"\bC+R+E+A+T+E?\b", "CREATE", schema_text, flags=re.IGNORECASE)
+    normalized = re.sub(r"\bT+A+B+E?L+E?\b", "TABLE", normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r"\bVARCHAR2\b", "VARCHAR", normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r"\bNUMBER\b", "INTEGER", normalized, flags=re.IGNORECASE)
+
+    chunks = re.split(r"(?:CREATE\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?", normalized, flags=re.IGNORECASE)
     for chunk in chunks[1:]:
         tbl_match = re.match(r"^[`\"'\[]?(\w+)[`\"'\]]?\s*\(", chunk.strip(), re.DOTALL)
         if not tbl_match:
@@ -820,8 +827,12 @@ def execute_sqlite_locally(schema_sql, query_sql):
             # Skip comments or non-DDL directives
             if re.match(r"^(/\*|--|SET\s+|USE\s+)", stmt.strip(), re.IGNORECASE):
                 continue
-            # Clean common MySQL/PostgreSQL dialect markers for SQLite in-memory execution
-            sqlite_compatible = re.sub(r"ENGINE\s*=\s*[\w\d]+", "", stmt, flags=re.IGNORECASE)
+            # Clean common MySQL/PostgreSQL/Oracle dialect markers and typos for SQLite in-memory execution
+            sqlite_compatible = re.sub(r"\bC+R+E+A+T+E?\b", "CREATE", stmt, flags=re.IGNORECASE)
+            sqlite_compatible = re.sub(r"\bT+A+B+E?L+E?\b", "TABLE", sqlite_compatible, flags=re.IGNORECASE)
+            sqlite_compatible = re.sub(r"\bVARCHAR2\b", "TEXT", sqlite_compatible, flags=re.IGNORECASE)
+            sqlite_compatible = re.sub(r"\bNUMBER\b", "INTEGER", sqlite_compatible, flags=re.IGNORECASE)
+            sqlite_compatible = re.sub(r"ENGINE\s*=\s*[\w\d]+", "", sqlite_compatible, flags=re.IGNORECASE)
             sqlite_compatible = re.sub(r"DEFAULT\s+CHARSET\s*=\s*[\w\d]+", "", sqlite_compatible, flags=re.IGNORECASE)
             sqlite_compatible = re.sub(r"COLLATE\s*=\s*[\w\d]+", "", sqlite_compatible, flags=re.IGNORECASE)
             sqlite_compatible = re.sub(r"\bAUTO_INCREMENT\b", "AUTOINCREMENT", sqlite_compatible, flags=re.IGNORECASE)
