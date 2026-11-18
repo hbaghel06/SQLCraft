@@ -417,54 +417,61 @@ def extract_where_conditions(query_lower, columns, target_table=""):
 
 def extract_values_from_prompt(user_query, columns):
     """
-    Extracts INSERT values from prompts like:
-    - 'insert ("Alice", 25, "HR")'
-    - 'insertion of values --> ("hb", 1), ("db", 5)'
-    - 'add a record with name Alice, age 25, dept HR'
-    - 'insert name="Alice", age=25'
-    Returns a list of rows: [[val1, val2, ...], ...]
+    Extracts N record values from any prompt format:
+    - Multiple lines: insertion->("hb", 54),\ninsertion->("jn", 654}
+    - Mixed/mismatched brackets: ("a", 1), {"b", 2}, ["c", 3], ("d", 4}
+    - Key-value pairs: name="hb", id=54
+    - Unbracketed CSV stream: "hb", 54, "jn", 654
+    Returns a list of rows: [[val1, val2], [val1, val2], ...]
     """
-    # 1. Try parenthesized values: ("hb", 1) or multiple ("hb", 1), ("db", 5)
-    paren_matches = re.findall(r"\(\s*([^()]+)\s*\)", user_query)
-    if paren_matches:
-        all_rows = []
-        for raw in paren_matches:
-            parts = re.split(r""",\s*(?=(?:[^'"]*['"][^'"]*['"])*[^'"]*$)""", raw)
+    col_count = len(columns) if columns else 1
+    all_rows = []
+
+    # 1. Any bracket pair: handles (), {}, [], and mismatched pairs like ( ... } or [ ... )
+    bracket_pat = r"[\(\{\[]\s*([^(){}\[\]]+?)\s*[\)\}\]]"
+    bracket_groups = re.findall(bracket_pat, user_query)
+    if bracket_groups:
+        for bg in bracket_groups:
+            parts = re.split(r""",\s*(?=(?:[^'"]*['"][^'"]*['"])*[^'"]*$)""", bg)
             row_vals = [p.strip().strip("'\"") for p in parts if p.strip()]
             if row_vals:
                 all_rows.append(row_vals)
         if all_rows:
             return all_rows
 
-    # 2. Try "col = val" pairs: name="Alice", age=25
+    # 2. Line-by-line parsing: if prompt has multiple lines
+    lines = [l.strip() for l in user_query.strip().splitlines() if l.strip()]
+    if len(lines) > 1:
+        line_rows = []
+        for line in lines:
+            cleaned_line = re.sub(
+                r"^(?:insert(?:ion)?(?:\s*->|:|\s+)?|add(?:\s*->|:|\s+)?)\s*",
+                "",
+                line,
+                flags=re.IGNORECASE
+            ).strip()
+            # Try to grab tokens inside this line
+            tokens = re.findall(r"""['\"]([^'"]+)['\"]|(-?\d+\.?\d*)""", cleaned_line)
+            vals = [t[0] if t[0] else t[1] for t in tokens if t[0] or t[1]]
+            if vals:
+                line_rows.append(vals)
+        if line_rows:
+            return line_rows
+
+    # 3. Key-Value mapping: name="Alice", id=25
     kv_matches = re.findall(r"(\w+)\s*=\s*['\"]?([\w\s]+?)['\"]?(?:,|$)", user_query, re.IGNORECASE)
-    if kv_matches:
+    if kv_matches and columns:
         col_val_map = {k.lower(): v.strip() for k, v in kv_matches}
         ordered = [col_val_map.get(c.lower(), None) for c in columns]
         if any(v is not None for v in ordered):
             return [[v if v is not None else "NULL" for v in ordered]]
 
-    # 3. Try "with col val" pattern: "with name Alice age 25 dept HR"
-    vals = []
-    for col in columns:
-        m = re.search(
-            rf"\b{re.escape(col.lower())}\b\s+['\"]?([\w\s]+?)['\"]?(?:\s+\w+\s+|\s*$|,)",
-            user_query.lower()
-        )
-        if m:
-            vals.append(m.group(1).strip())
-
-    if len(vals) == len(columns):
-        return [vals]
-
-    # 4. Try quoted strings + standalone numbers in order
+    # 4. Stream of tokens chunked by column count:
     tokens = re.findall(r"""['\"]([^'"]+)['\"]|(-?\d+\.?\d*)""", user_query)
-    ordered_vals = []
-    for t in tokens:
-        ordered_vals.append(t[0] if t[0] else t[1])
-
-    if ordered_vals:
-        return [ordered_vals]
+    all_tokens = [t[0] if t[0] else t[1] for t in tokens if t[0] or t[1]]
+    if all_tokens and col_count > 0:
+        chunked = [all_tokens[i:i + col_count] for i in range(0, len(all_tokens), col_count)]
+        return chunked
 
     return []
 
